@@ -99,32 +99,45 @@ import sharp from 'sharp';
 import { readdir, stat, unlink } from 'fs/promises';
 
 
-const CLEANUP_MAX_AGE = 5 * 60 * 1000; // 5 minutes in ms
-async function cleanOldFiles(dir) {
-  const files = await readdir(dir);
-  const now = Date.now();
+const CLEANUP_MAX_AGE = 5 * 60 * 10;
 
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    try {
-      const { birthtimeMs } = await stat(filePath);
-      if (now - birthtimeMs > CLEANUP_MAX_AGE) {
-        await unlink(filePath);
-        console.log(`Deleted old file: ${filePath}`);
+export async function cleanOldFiles(dir) {
+  try {
+    const files = await readdir(dir);
+    const now = Date.now();
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      try {
+        const { mtimeMs } = await stat(filePath);
+        const age = now - mtimeMs;
+        console.log(`File: ${file}, Age: ${age}ms`);
+        if (age > CLEANUP_MAX_AGE) {
+          await unlink(filePath);
+          console.log(`Deleted old file: ${filePath}`);
+        }
+      } catch (err) {
+        console.warn(`Error deleting file ${filePath}:`, err);
       }
-    } catch (err) {
-      console.warn(`Error deleting file ${filePath}:`, err);
     }
+  } catch (err) {
+    console.error(`Failed to read directory ${dir}:`, err);
   }
 }
 
-const UPLOAD_DIR = path.join(process.cwd(),'public', 'uploads');
+
+const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
 const CONVERTED_DIR = path.join(process.cwd(), 'public', 'converted');
+
+export async function POST(req) {
+
+
 
 await mkdir(UPLOAD_DIR, { recursive: true });
 await mkdir(CONVERTED_DIR, { recursive: true });
 
-export async function POST(req) {
+await cleanOldFiles(UPLOAD_DIR);
+await cleanOldFiles(CONVERTED_DIR);
+
   const formData = await req.formData();
   const files = formData.getAll('images');
 
@@ -133,9 +146,6 @@ export async function POST(req) {
   const height = parseFloat(formData.get('height'));
   const unit = formData.get('unit');
   let quality = parseInt(formData.get('quality'), 10);
-  
-await cleanOldFiles(UPLOAD_DIR);
-await cleanOldFiles(CONVERTED_DIR);
 
   if (isNaN(quality) || quality < 10 || quality > 100) {
     quality = 80;
